@@ -191,7 +191,8 @@
 </div>
 
 <script>
-  // تقسيم الساعة لثلاث مراحل متساوية (20 دقيقة لكل مرحلة)
+  const STORAGE_KEY = 'study_timer_state_v1';
+
   const stages = [
     { name: 'مراجعة بعيدة', duration: 20 * 60, color: '#38bdf8' },
     { name: 'مراجعة قريبة', duration: 20 * 60, color: '#818cf8' },
@@ -211,6 +212,55 @@
   const skipBtn = document.getElementById('skip-btn');
   const resetBtn = document.getElementById('reset-btn');
   const pills = document.querySelectorAll('.stage-pill');
+
+  function saveState() {
+    const state = {
+      currentStage,
+      remainingTime,
+      isRunning: timerId !== null,
+      savedAt: Date.now()
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  function loadState() {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+
+    try {
+      const state = JSON.parse(raw);
+      if (typeof state.currentStage === 'number' && stages[state.currentStage]) {
+        currentStage = state.currentStage;
+        remainingTime = state.remainingTime;
+
+        // إذا كان المؤقت يعمل أثناء الإغلاق، يتم احتساب الثواني المنقضية بدقة
+        if (state.isRunning && state.savedAt) {
+          const elapsed = Math.floor((Date.now() - state.savedAt) / 1000);
+          advanceBySeconds(elapsed);
+        }
+      }
+    } catch(e) {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }
+
+  function advanceBySeconds(secs) {
+    while (secs > 0) {
+      if (secs < remainingTime) {
+        remainingTime -= secs;
+        secs = 0;
+      } else {
+        secs -= remainingTime;
+        if (currentStage < stages.length - 1) {
+          currentStage++;
+          remainingTime = stages[currentStage].duration;
+        } else {
+          remainingTime = 0;
+          break;
+        }
+      }
+    }
+  }
 
   function format(seconds) {
     const m = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -259,6 +309,7 @@
       currentStage++;
       remainingTime = stages[currentStage].duration;
       updateUI();
+      saveState();
     } else {
       clearInterval(timerId);
       timerId = null;
@@ -273,6 +324,7 @@
     if (remainingTime > 0) {
       remainingTime--;
       updateUI();
+      saveState();
     } else {
       nextStage();
     }
@@ -283,9 +335,11 @@
       clearInterval(timerId);
       timerId = null;
       startBtn.textContent = 'استئناف';
+      saveState();
     } else {
       timerId = setInterval(tick, 1000);
       startBtn.textContent = 'إيقاف مؤقت';
+      saveState();
     }
   }
 
@@ -295,6 +349,7 @@
     currentStage = 0;
     remainingTime = stages[0].duration;
     startBtn.textContent = 'بدء';
+    localStorage.removeItem(STORAGE_KEY);
     updateUI();
   }
 
@@ -303,6 +358,9 @@
   resetBtn.addEventListener('click', reset);
 
   progress.style.strokeDasharray = circumference;
+
+  // استعادة الحالة عند فتح الصفحة
+  loadState();
   updateUI();
 </script>
 </body>
